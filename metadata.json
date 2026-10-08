@@ -1,0 +1,6 @@
+{
+  "name": "Simple Library Database System",
+  "description": "Tutorial 3: Full Stack Web Development - SQL and JDBC demonstration with Students, Books, and Borrowings tables, interactive queries, Java DAOs, and Viva guide.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
