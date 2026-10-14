@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Student } from '../types';
-import { Plus, Pencil, Trash2, CheckCircle2, Terminal, Code2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, CheckCircle2, Terminal, Code2, Loader2, AlertCircle } from 'lucide-react';
 
 interface StudentManagerProps {
   students: Student[];
-  onAddStudent: (student: Omit<Student, 'student_id'>) => void;
-  onUpdateStudent: (student: Student) => void;
-  onDeleteStudent: (id: number) => void;
+  onAddStudent: (student: Omit<Student, 'student_id'>) => Promise<boolean | void>;
+  onUpdateStudent: (student: Student) => Promise<boolean | void>;
+  onDeleteStudent: (id: number) => Promise<boolean | void>;
+  isLoading?: boolean;
 }
 
 export const StudentManager: React.FC<StudentManagerProps> = ({
@@ -14,11 +15,14 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
   onAddStudent,
   onUpdateStudent,
   onDeleteStudent,
+  isLoading = false,
 }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [department, setDepartment] = useState('Computer Science');
   const [phone, setPhone] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
@@ -31,31 +35,39 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
     sql: string;
     jdbc: string;
   }>({
-    action: 'SELECT (Initial load of students table)',
+    action: 'SELECT (Query students from MySQL)',
     sql: 'SELECT student_id, name, email, department, phone FROM students ORDER BY student_id ASC;',
     jdbc: `Connection conn = DatabaseConnection.getConnection();\nStatement stmt = conn.createStatement();\nResultSet rs = stmt.executeQuery("SELECT ... FROM students");\nwhile (rs.next()) { ... }`
   });
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
 
-    onAddStudent({
-      name: name.trim(),
-      email: email.trim(),
-      department: department.trim(),
-      phone: phone.trim() || undefined,
-    });
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await onAddStudent({
+        name: name.trim(),
+        email: email.trim(),
+        department: department.trim(),
+        phone: phone.trim() || undefined,
+      });
 
-    setLastTrace({
-      action: 'INSERT (Add new student)',
-      sql: `INSERT INTO students (name, email, department, phone) VALUES ('${name}', '${email}', '${department}', '${phone || 'NULL'}');`,
-      jdbc: `String sql = "INSERT INTO students (name, email, department, phone) VALUES (?, ?, ?, ?)";\nPreparedStatement pstmt = conn.prepareStatement(sql);\npstmt.setString(1, "${name}");\npstmt.setString(2, "${email}");\npstmt.setString(3, "${department}");\npstmt.setString(4, "${phone}");\nint rowsAffected = pstmt.executeUpdate(); // returns 1`
-    });
+      setLastTrace({
+        action: 'INSERT (Add new student)',
+        sql: `INSERT INTO students (name, email, department, phone) VALUES ('${name.trim()}', '${email.trim()}', '${department.trim()}', '${phone.trim() || 'NULL'}');`,
+        jdbc: `String sql = "INSERT INTO students (name, email, department, phone) VALUES (?, ?, ?, ?)";\nPreparedStatement pstmt = conn.prepareStatement(sql);\npstmt.setString(1, "${name.trim()}");\npstmt.setString(2, "${email.trim()}");\npstmt.setString(3, "${department.trim()}");\npstmt.setString(4, "${phone.trim()}");\nint rowsAffected = pstmt.executeUpdate(); // returns 1`
+      });
 
-    setName('');
-    setEmail('');
-    setPhone('');
+      setName('');
+      setEmail('');
+      setPhone('');
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to add student');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const startEdit = (s: Student) => {
@@ -64,37 +76,53 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
     setEditEmail(s.email);
     setEditDepartment(s.department);
     setEditPhone(s.phone || '');
+    setFormError(null);
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingId === null) return;
 
-    onUpdateStudent({
-      student_id: editingId,
-      name: editName.trim(),
-      email: editEmail.trim(),
-      department: editDepartment.trim(),
-      phone: editPhone.trim() || undefined,
-    });
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await onUpdateStudent({
+        student_id: editingId,
+        name: editName.trim(),
+        email: editEmail.trim(),
+        department: editDepartment.trim(),
+        phone: editPhone.trim() || undefined,
+      });
 
-    setLastTrace({
-      action: `UPDATE (Student ID #${editingId})`,
-      sql: `UPDATE students SET name = '${editName}', email = '${editEmail}', department = '${editDepartment}', phone = '${editPhone}' WHERE student_id = ${editingId};`,
-      jdbc: `String sql = "UPDATE students SET name = ?, email = ?, department = ?, phone = ? WHERE student_id = ?";\nPreparedStatement pstmt = conn.prepareStatement(sql);\npstmt.setString(1, "${editName}");\npstmt.setString(2, "${editEmail}");\npstmt.setString(3, "${editDepartment}");\npstmt.setString(4, "${editPhone}");\npstmt.setInt(5, ${editingId});\nint rowsAffected = pstmt.executeUpdate();`
-    });
+      setLastTrace({
+        action: `UPDATE (Student ID #${editingId})`,
+        sql: `UPDATE students SET name = '${editName.trim()}', email = '${editEmail.trim()}', department = '${editDepartment.trim()}', phone = '${editPhone.trim()}' WHERE student_id = ${editingId};`,
+        jdbc: `String sql = "UPDATE students SET name = ?, email = ?, department = ?, phone = ? WHERE student_id = ?";\nPreparedStatement pstmt = conn.prepareStatement(sql);\npstmt.setString(1, "${editName.trim()}");\npstmt.setString(2, "${editEmail.trim()}");\npstmt.setString(3, "${editDepartment.trim()}");\npstmt.setString(4, "${editPhone.trim()}");\npstmt.setInt(5, ${editingId});\nint rowsAffected = pstmt.executeUpdate();`
+      });
 
-    setEditingId(null);
+      setEditingId(null);
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to update student');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDelete = (id: number, studentName: string) => {
-    if (confirm(`Delete student "${studentName}" (ID: ${id})?`)) {
-      onDeleteStudent(id);
-      setLastTrace({
-        action: `DELETE (Student ID #${id})`,
-        sql: `DELETE FROM students WHERE student_id = ${id};`,
-        jdbc: `String sql = "DELETE FROM students WHERE student_id = ?";\nPreparedStatement pstmt = conn.prepareStatement(sql);\npstmt.setInt(1, ${id});\nint rows = pstmt.executeUpdate();`
-      });
+  const handleDelete = async (id: number, studentName: string) => {
+    if (confirm(`Delete student "${studentName}" (ID: ${id}) from MySQL database?`)) {
+      setSubmitting(true);
+      try {
+        await onDeleteStudent(id);
+        setLastTrace({
+          action: `DELETE (Student ID #${id})`,
+          sql: `DELETE FROM students WHERE student_id = ${id};`,
+          jdbc: `String sql = "DELETE FROM students WHERE student_id = ?";\nPreparedStatement pstmt = conn.prepareStatement(sql);\npstmt.setInt(1, ${id});\nint rows = pstmt.executeUpdate();`
+        });
+      } catch (err: any) {
+        alert(err.message || 'Failed to delete student');
+      } finally {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -104,17 +132,24 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-4 rounded-xl">
         <div>
           <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-blue-900/60 text-blue-300 border border-blue-700/50">
-            Table: students
+            MySQL Table: students
           </span>
           <h2 className="text-xl font-bold text-white mt-1">Student Operations (CRUD)</h2>
           <p className="text-sm text-slate-400">
-            Demonstrates <strong>Add</strong> (INSERT), <strong>View</strong> (SELECT), <strong>Update</strong> (UPDATE), and <strong>Delete</strong> (DELETE) using JDBC PreparedStatement and Statement.
+            Demonstrates <strong>Add</strong> (INSERT), <strong>View</strong> (SELECT), <strong>Update</strong> (UPDATE), and <strong>Delete</strong> (DELETE) persisted in MySQL.
           </p>
         </div>
         <div className="text-xs text-slate-400 font-mono bg-slate-950 px-3 py-2 rounded border border-slate-800">
           Java Class: <span className="text-amber-400">StudentDAO.java</span>
         </div>
       </div>
+
+      {formError && (
+        <div className="p-3 bg-red-950/70 border border-red-800 rounded-lg text-xs text-red-300 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+          <span>{formError}</span>
+        </div>
+      )}
 
       {/* Grid: Form on left, Table on right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -173,7 +208,7 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                Phone Number (from ALTER TABLE)
+                Phone Number (VARCHAR)
               </label>
               <input
                 type="text"
@@ -186,10 +221,20 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
 
             <button
               type="submit"
-              className="w-full mt-2 bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              disabled={submitting}
+              className="w-full mt-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              Execute StudentDAO.addStudent()
+              {submitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving to MySQL...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  POST /api/students (INSERT)
+                </>
+              )}
             </button>
           </form>
         </div>
@@ -198,11 +243,14 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm overflow-hidden flex flex-col">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
             <div>
-              <h3 className="font-semibold text-white">View Students (ResultSet)</h3>
-              <p className="text-xs text-slate-400">Total records: {students.length}</p>
+              <h3 className="font-semibold text-white flex items-center gap-2">
+                <span>View Students (ResultSet)</span>
+                {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />}
+              </h3>
+              <p className="text-xs text-slate-400">Total records in MySQL: {students.length}</p>
             </div>
             <span className="text-xs font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-1 rounded">
-              Statement.executeQuery("SELECT ...")
+              GET /api/students (SELECT)
             </span>
           </div>
 
@@ -237,14 +285,14 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                     <td className="px-3 py-2.5 text-right space-x-2">
                       <button
                         onClick={() => startEdit(s)}
-                        title="Update student"
+                        title="Update student in MySQL"
                         className="p-1 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded transition-colors cursor-pointer"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(s.student_id, s.name)}
-                        title="Delete student"
+                        title="Delete student from MySQL"
                         className="p-1 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -255,7 +303,7 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                 {students.length === 0 && (
                   <tr>
                     <td colSpan={6} className="text-center py-8 text-slate-500">
-                      No students found in table. Add one using the form on the left.
+                      {isLoading ? 'Loading students from database...' : 'No students found in MySQL database.'}
                     </td>
                   </tr>
                 )}
@@ -271,7 +319,7 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
           <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-md w-full shadow-2xl">
             <h3 className="text-lg font-bold text-white mb-2">Update Student (ID: #{editingId})</h3>
             <p className="text-xs text-slate-400 mb-4">
-              Demonstrates <code>StudentDAO.updateStudent()</code> with PreparedStatement and <code>executeUpdate()</code>.
+              Executes <code>PUT /api/students/{editingId}</code> with parameterized SQL in MySQL.
             </p>
             <form onSubmit={handleSaveEdit} className="space-y-3">
               <div>
@@ -328,9 +376,11 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium"
+                  disabled={submitting}
+                  className="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium flex items-center gap-1.5"
                 >
-                  Save Changes (executeUpdate)
+                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Save Changes (PUT)
                 </button>
               </div>
             </form>
@@ -353,7 +403,7 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
           </div>
           <div className="bg-slate-900/90 p-3 rounded border border-slate-800">
             <div className="text-blue-400 font-bold mb-1 flex items-center gap-1.5 font-sans">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Java JDBC API Code:
+              <CheckCircle2 className="w-3.5 h-3.5" /> Java JDBC / Node.js API Code:
             </div>
             <pre className="text-slate-300 whitespace-pre-wrap">{lastTrace.jdbc}</pre>
           </div>

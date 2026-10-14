@@ -31,7 +31,7 @@ export interface BorrowingDetail {
   book_title: string;
   author: string;
   borrow_date: string;
-  status: string;
+  status: 'BORROWED' | 'RETURNED';
 }
 
 export interface QueryExecutionResult {
@@ -43,4 +43,25 @@ export interface QueryExecutionResult {
   message: string;
   topic: string;
   type: 'DQL' | 'DML' | 'DDL';
+}
+
+export interface DbHealth {
+  status: 'connected' | 'disconnected' | 'connected_with_warnings' | 'checking';
+  database?: string;
+  host?: string;
+  user?: string;
+  tables?: {
+    students: boolean;
+    books: boolean;
+    borrowings: boolean;
+  };
+  counts?: {
+    students: number;
+    books: number;
+    borrowings: number;
+  };
+  allRequiredTablesExist?: boolean;
+  error?: string;
+  code?: string;
+  message?: string;
 }

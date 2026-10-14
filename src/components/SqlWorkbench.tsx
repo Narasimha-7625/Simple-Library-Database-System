@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Student, Book, Borrowing, QueryExecutionResult } from '../types';
+import { Student, Book, Borrowing, BorrowingDetail, QueryExecutionResult } from '../types';
 import { Play, RotateCcw, Check, Database, Sparkles, Terminal, Code2 } from 'lucide-react';
 
 interface SqlWorkbenchProps {
   students: Student[];
   books: Book[];
-  borrowings: Borrowing[];
+  borrowings: (Borrowing | BorrowingDetail)[];
   onExecuteCustomAction?: (type: string) => void;
 }
 
@@ -16,7 +16,7 @@ interface SqlPreset {
   sql: string;
   description: string;
   type: 'DQL' | 'DML' | 'DDL';
-  run: (students: Student[], books: Book[], borrowings: Borrowing[]) => QueryExecutionResult;
+  run: (students: Student[], books: Book[], borrowings: (Borrowing | BorrowingDetail)[]) => QueryExecutionResult;
 }
 
 export const SqlWorkbench: React.FC<SqlWorkbenchProps> = ({
