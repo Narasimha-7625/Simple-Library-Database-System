@@ -5,8 +5,8 @@
 -- =====================================================================
 
 -- Step 1: Setting up database
-CREATE DATABASE IF NOT EXISTS library_db;
-USE library_db;
+CREATE DATABASE IF NOT EXISTS librarydatabase;
+USE librarydatabase;
 
 -- Step 2: DDL - DROP TABLE (in reverse foreign-key order)
 DROP TABLE IF EXISTS borrowings;

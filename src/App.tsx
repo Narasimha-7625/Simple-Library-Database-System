@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Student, Book, BorrowingDetail, DbHealth } from './types';
-import { INITIAL_STUDENTS, INITIAL_BOOKS, INITIAL_BORROWINGS } from './data/initialData';
 import { api } from './api';
 import { StudentManager } from './components/StudentManager';
 import { BookManager } from './components/BookManager';
@@ -15,7 +14,6 @@ import {
   GraduationCap,
   Database,
   RefreshCw,
-  Info,
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
@@ -28,7 +26,7 @@ export default function App() {
   const [dbHealth, setDbHealth] = useState<DbHealth | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [statusNotification, setStatusNotification] = useState<{
-    type: 'success' | 'error' | 'info';
+    type: 'success' | 'error';
     text: string;
   } | null>(null);
 
@@ -36,51 +34,39 @@ export default function App() {
     'students' | 'books' | 'borrowings' | 'code' | 'tutorial'
   >('students');
 
-  // Initial demo data fallback for when MySQL is offline
-  const initialJoinedBorrowings: BorrowingDetail[] = INITIAL_BORROWINGS.map((b) => {
-    const student = INITIAL_STUDENTS.find((s) => s.student_id === b.student_id);
-    const book = INITIAL_BOOKS.find((bk) => bk.book_id === b.book_id);
-    return {
-      borrow_id: b.borrow_id,
-      student_id: b.student_id,
-      student_name: student ? student.name : `Student #${b.student_id}`,
-      department: student ? student.department : 'Unknown',
-      book_id: b.book_id,
-      book_title: book ? book.title : `Book #${b.book_id}`,
-      author: book ? book.author : 'Unknown',
-      borrow_date: b.borrow_date,
-      status: b.status,
-    };
-  });
+  const reportDatabaseError = (action: string, err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    setStatusNotification({ type: 'error', text: `${action} failed: ${message}` });
+  };
 
-  // Load data directly from MySQL (MySQL Workbench database)
   const loadDatabaseData = useCallback(async () => {
     setLoading(true);
     try {
       const health = await api.getHealth();
       setDbHealth(health);
 
-      if (health.status === 'connected') {
-        const [studentsData, booksData, borrowingsData] = await Promise.all([
-          api.getStudents().catch(() => null),
-          api.getBooks().catch(() => null),
-          api.getBorrowings().catch(() => null),
-        ]);
-
-        if (studentsData !== null) setStudents(studentsData);
-        if (booksData !== null) setBooks(booksData);
-        if (borrowingsData !== null) setBorrowings(borrowingsData);
-      } else {
-        // Fallback to initial seed records if MySQL server is not started yet
-        setStudents(INITIAL_STUDENTS);
-        setBooks(INITIAL_BOOKS);
-        setBorrowings(initialJoinedBorrowings);
+      if (health.status !== 'connected') {
+        setStudents([]);
+        setBooks([]);
+        setBorrowings([]);
+        setStatusNotification({
+          type: 'error',
+          text: health.message || health.error || 'Could not connect to MySQL.',
+        });
+        return;
       }
-    } catch (err: any) {
-      console.warn('Backend connection note:', err?.message || err);
-      setStudents(INITIAL_STUDENTS);
-      setBooks(INITIAL_BOOKS);
-      setBorrowings(initialJoinedBorrowings);
+
+      const [studentsData, booksData, borrowingsData] = await Promise.all([
+        api.getStudents(),
+        api.getBooks(),
+        api.getBorrowings(),
+      ]);
+      setStudents(studentsData);
+      setBooks(booksData);
+      setBorrowings(borrowingsData);
+      setStatusNotification(null);
+    } catch (err) {
+      reportDatabaseError('Loading MySQL data', err);
     } finally {
       setLoading(false);
     }
@@ -99,15 +85,8 @@ export default function App() {
         type: 'success',
         text: `Student "${created.name}" saved to MySQL (visible in MySQL Workbench).`,
       });
-    } catch (err: any) {
-      // If MySQL is offline, record locally and inform user
-      const nextId = students.length > 0 ? Math.max(...students.map((s) => s.student_id)) + 1 : 1;
-      const created = { student_id: nextId, ...newS };
-      setStudents((prev) => [...prev, created]);
-      setStatusNotification({
-        type: 'info',
-        text: `Saved locally. Connect MySQL to store permanently in MySQL Workbench.`,
-      });
+    } catch (err) {
+      reportDatabaseError('Saving student to MySQL', err);
     }
   };
 
@@ -119,8 +98,8 @@ export default function App() {
         type: 'success',
         text: `Student #${saved.student_id} updated in MySQL Workbench.`,
       });
-    } catch (err: any) {
-      setStudents((prev) => prev.map((s) => (s.student_id === updated.student_id ? updated : s)));
+    } catch (err) {
+      reportDatabaseError('Updating student in MySQL', err);
     }
   };
 
@@ -133,9 +112,8 @@ export default function App() {
         type: 'success',
         text: `Student #${id} deleted from MySQL Workbench.`,
       });
-    } catch (err: any) {
-      setStudents((prev) => prev.filter((s) => s.student_id !== id));
-      setBorrowings((prev) => prev.filter((b) => b.student_id !== id));
+    } catch (err) {
+      reportDatabaseError('Deleting student from MySQL', err);
     }
   };
 
@@ -148,14 +126,8 @@ export default function App() {
         type: 'success',
         text: `Book "${created.title}" saved to MySQL Workbench database.`,
       });
-    } catch (err: any) {
-      const nextId = books.length > 0 ? Math.max(...books.map((b) => b.book_id)) + 1 : 1;
-      const created = { book_id: nextId, ...newB };
-      setBooks((prev) => [...prev, created]);
-      setStatusNotification({
-        type: 'info',
-        text: `Saved locally. Connect MySQL to persist in MySQL Workbench.`,
-      });
+    } catch (err) {
+      reportDatabaseError('Saving book to MySQL', err);
     }
   };
 
@@ -167,8 +139,8 @@ export default function App() {
         type: 'success',
         text: `Book #${saved.book_id} updated in MySQL Workbench.`,
       });
-    } catch (err: any) {
-      setBooks((prev) => prev.map((b) => (b.book_id === updated.book_id ? updated : b)));
+    } catch (err) {
+      reportDatabaseError('Updating book in MySQL', err);
     }
   };
 
@@ -181,9 +153,8 @@ export default function App() {
         type: 'success',
         text: `Book #${id} deleted from MySQL Workbench.`,
       });
-    } catch (err: any) {
-      setBooks((prev) => prev.filter((b) => b.book_id !== id));
-      setBorrowings((prev) => prev.filter((b) => b.book_id !== id));
+    } catch (err) {
+      reportDatabaseError('Deleting book from MySQL', err);
     }
   };
 
@@ -198,28 +169,8 @@ export default function App() {
         type: 'success',
         text: `Borrowing #${newRecord.borrow_id} stored in MySQL Workbench (inventory updated).`,
       });
-    } catch (err: any) {
-      const book = books.find((b) => b.book_id === bookId);
-      if (!book || book.available_copies <= 0) {
-        throw new Error('No available copies left.');
-      }
-      setBooks((prev) =>
-        prev.map((b) => (b.book_id === bookId ? { ...b, available_copies: b.available_copies - 1 } : b))
-      );
-      const student = students.find((s) => s.student_id === studentId);
-      const nextId = borrowings.length > 0 ? Math.max(...borrowings.map((b) => b.borrow_id)) + 1 : 1;
-      const newRecord: BorrowingDetail = {
-        borrow_id: nextId,
-        student_id: studentId,
-        student_name: student?.name || `Student #${studentId}`,
-        department: student?.department || 'General',
-        book_id: bookId,
-        book_title: book.title,
-        author: book.author,
-        borrow_date: date,
-        status: 'BORROWED',
-      };
-      setBorrowings((prev) => [newRecord, ...prev]);
+    } catch (err) {
+      reportDatabaseError('Recording borrowing in MySQL', err);
     }
   };
 
@@ -233,15 +184,8 @@ export default function App() {
         type: 'success',
         text: `Borrowing #${borrowId} returned in MySQL Workbench (copy restored).`,
       });
-    } catch (err: any) {
-      const record = borrowings.find((b) => b.borrow_id === borrowId);
-      if (!record || record.status === 'RETURNED') return;
-      setBorrowings((prev) =>
-        prev.map((b) => (b.borrow_id === borrowId ? { ...b, status: 'RETURNED' } : b))
-      );
-      setBooks((prev) =>
-        prev.map((b) => (b.book_id === record.book_id ? { ...b, available_copies: b.available_copies + 1 } : b))
-      );
+    } catch (err) {
+      reportDatabaseError('Returning book in MySQL', err);
     }
   };
 
@@ -255,8 +199,8 @@ export default function App() {
         type: 'success',
         text: `Borrowing record #${borrowId} removed from MySQL Workbench.`,
       });
-    } catch (err: any) {
-      setBorrowings((prev) => prev.filter((b) => b.borrow_id !== borrowId));
+    } catch (err) {
+      reportDatabaseError('Deleting borrowing from MySQL', err);
     }
   };
 
@@ -395,7 +339,7 @@ export default function App() {
               {statusNotification.type === 'success' ? (
                 <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
               ) : (
-                <Info className="w-4 h-4 shrink-0" />
+                <AlertCircle className="w-4 h-4 shrink-0" />
               )}
               <span>{statusNotification.text}</span>
             </div>
